@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Metadata Remover</title>
+    <style>
+        /* Basic Reset & Dark Mode Theme */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #1a1a1a; /* Dark background */
+            color: #e0e0e0; /* Light text */
+            line-height: 1.6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* Container */
+        .container {
+            background-color: #2b2b2b; /* Slightly lighter dark background for container */
+            padding: 30px 40px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        /* Heading */
+        h1 {
+            color: #ffffff;
+            margin-bottom: 25px;
+            font-weight: 600;
+        }
+
+        /* Hidden File Input */
+        #imageUpload {
+            display: none;
+        }
+
+        /* Custom Upload Button */
+        .upload-button {
+            display: inline-block;
+            padding: 12px 25px;
+            background-color: #007bff; /* Accent color */
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            margin-bottom: 20px;
+        }
+
+        .upload-button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        .upload-button:active {
+             transform: translateY(0);
+        }
+
+        /* Image Preview Area */
+        #imagePreview {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            min-height: 100px; /* Placeholder height */
+            background-color: #333333; /* Darker area for preview */
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* Ensure image stays within bounds */
+        }
+
+        #imagePreview img {
+            max-width: 100%;
+            max-height: 400px; /* Limit preview height */
+            display: block; /* Remove extra space below image */
+            border-radius: 3px;
+        }
+
+        /* Status Messages */
+        #status {
+            margin-top: 15px;
+            font-style: italic;
+            color: #aaaaaa; /* Dimmer text for status */
+            min-height: 1.6em; /* Prevent layout shift */
+        }
+
+        /* Download Button */
+        #downloadButton {
+            padding: 12px 25px;
+            background-color: #28a745; /* Green for download */
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: background-color 0.3s ease, opacity 0.3s ease;
+            opacity: 0.5; /* Start disabled */
+            pointer-events: none; /* Start disabled */
+            margin-bottom: 25px; /* Added margin to separate from disclosure */
+        }
+
+        #downloadButton:not(:disabled) {
+            opacity: 1;
+            pointer-events: auto; /* Enable clicks when not disabled */
+        }
+
+        #downloadButton:not(:disabled):hover {
+            background-color: #218838;
+        }
+
+         #downloadButton:disabled {
+             cursor: not-allowed;
+         }
+
+         /* --- Disclosure Styling --- */
+        .disclosure {
+            font-size: 0.8em; /* Smaller font size */
+            color: #a0a0a0;   /* Slightly muted color */
+            margin-top: 25px; /* Space above the disclosure */
+            line-height: 1.4;
+         }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Image Metadata Remover</h1>
+
+        <input type="file" id="imageUpload" accept="image/jpeg, image/png, image/webp, image/gif, image/bmp">
+
+        <label for="imageUpload" class="upload-button">Upload Image</label>
+
+        <div id="imagePreview">
+            <img id="preview" src="#" alt="Image Preview" style="display: none;">
+        </div>
+
+        <p id="status">Select an image file to process.</p>
+
+        <button id="downloadButton" disabled>Download Processed Image</button>
+
+        <p class="disclosure">
+            <strong>Privacy Notice:</strong> Image processing is performed entirely locally within your web browser.
+            Your files are never uploaded to or stored on any external server.
+        </p>
+    </div>
+
+    <script>
+        const imageUpload = document.getElementById('imageUpload');
+        const imagePreviewContainer = document.getElementById('imagePreview');
+        const previewImage = document.getElementById('preview');
+        const statusDisplay = document.getElementById('status');
+        const downloadButton = document.getElementById('downloadButton');
+
+        let processedBlob = null;
+        let originalFileName = '';
+        let originalFileType = 'image/png'; // Default fallback type
+
+        // --- Event Listener for File Input Change ---
+        imageUpload.addEventListener('change', (event) => {
+            const files = event.target.files;
+            if (!files || files.length === 0) {
+                statusDisplay.textContent = 'No file selected.';
+                resetApp();
+                return;
+            }
+
+            const file = files[0];
+            originalFileName = file.name;
+            originalFileType = file.type; // Store the original type
+
+            // Basic file type check (more robust checks can be added)
+            if (!file.type.startsWith('image/')) {
+                 statusDisplay.textContent = 'Error: Please select an image file.';
+                 resetApp();
+                 return;
+            }
+
+            statusDisplay.textContent = 'Processing image...';
+            downloadButton.disabled = true;
+            previewImage.style.display = 'none'; // Hide previous preview
+            processedBlob = null; // Clear previous blob
+
+            const reader = new FileReader();
+
+            // --- Step 1: Read the uploaded file ---
+            reader.onload = function(e) {
+                const img = new Image();
+
+                // --- Step 2: Load the image data into an Image object ---
+                img.onload = function() {
+                    // --- Step 3: Draw the image onto a canvas ---
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.naturalWidth; // Use natural dimensions for full quality
+                    canvas.height = img.naturalHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+
+                    // --- Step 4: Convert canvas content to a Blob ---
+                    // This step effectively strips metadata.
+                    // Use the original file type if it's supported by canvas.toBlob, otherwise fallback.
+                    // Common supported types: 'image/png', 'image/jpeg', 'image/webp'
+                    let outputType = originalFileType;
+                    if (outputType !== 'image/png' && outputType !== 'image/jpeg' && outputType !== 'image/webp') {
+                        console.warn(`Original type ${outputType} may not be supported by canvas.toBlob. Falling back to PNG.`);
+                        outputType = 'image/png'; // Fallback to PNG for wider compatibility
+                    }
+
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            processedBlob = blob;
+
+                            // --- Step 5: Display preview and enable download ---
+                            const previewUrl = URL.createObjectURL(processedBlob);
+                            previewImage.src = previewUrl;
+                            previewImage.style.display = 'block'; // Show the preview
+                            statusDisplay.textContent = 'Image processed. Ready to download.';
+                            downloadButton.disabled = false; // Enable download
+
+                             // Clean up the old Object URL when a new one is created (optional but good practice)
+                             previewImage.addEventListener('load', () => {
+                                 if (previewImage.dataset.previousUrl) {
+                                     URL.revokeObjectURL(previewImage.dataset.previousUrl);
+                                 }
+                                 previewImage.dataset.previousUrl = previewUrl; // Store current URL for future cleanup
+                             }, { once: true });
+
+
+                        } else {
+                             statusDisplay.textContent = 'Error: Could not process the image.';
+                             resetApp();
+                        }
+                    }, outputType, 0.92); // Use original type, quality 0.92 for JPEG/WebP
+
+                };
+
+                img.onerror = function() {
+                    statusDisplay.textContent = 'Error: Could not load the image file.';
+                    resetApp();
+                };
+
+                img.src = e.target.result; // Set source for the Image object
+            };
+
+            reader.onerror = function() {
+                 statusDisplay.textContent = 'Error: Could not read the file.';
+                 resetApp();
+            };
+
+            reader.readAsDataURL(file); // Read file as Data URL
+        });
+
+        // --- Event Listener for Download Button Click ---
+        downloadButton.addEventListener('click', () => {
+            if (!processedBlob) {
+                statusDisplay.textContent = 'Error: No processed image available to download.';
+                return;
+            }
+
+            // Create a temporary link element
+            const link = document.createElement('a');
+
+            // Create an Object URL for the processed blob
+            const url = URL.createObjectURL(processedBlob);
+
+            link.href = url;
+
+            // Suggest a filename for download
+            const nameWithoutExtension = originalFileName.substring(0, originalFileName.lastIndexOf('.')) || originalFileName;
+            let extension = 'png'; // Default extension
+            if (processedBlob.type === 'image/jpeg') extension = 'jpg';
+            if (processedBlob.type === 'image/webp') extension = 'webp';
+            link.download = `${nameWithoutExtension}_stripped.${extension}`;
+
+            // Append link to the body (required for Firefox)
+            document.body.appendChild(link);
+
+            // Programmatically click the link to trigger download
+            link.click();
+
+            // Clean up: remove link and revoke Object URL
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            statusDisplay.textContent = 'Download initiated.';
+        });
+
+        // --- Helper function to reset the state ---
+        function resetApp() {
+            previewImage.style.display = 'none';
+            previewImage.removeAttribute('src');
+            if (previewImage.dataset.previousUrl) {
+                 URL.revokeObjectURL(previewImage.dataset.previousUrl); // Clean up preview URL
+                 delete previewImage.dataset.previousUrl;
+            }
+            downloadButton.disabled = true;
+            processedBlob = null;
+            originalFileName = '';
+            originalFileType = 'image/png';
+            // Reset file input value allows re-uploading the same file
+            imageUpload.value = null;
+        }
+
+    </script>
+
+</body>
+</html>
